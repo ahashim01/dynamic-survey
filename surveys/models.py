@@ -56,8 +56,10 @@ class Field(TimestampedModel):
 class Response(TimestampedModel):
     """Model representing the response to a survey."""
 
-    survey = models.ForeignKey(Survey, related_name="responses", on_delete=models.CASCADE)
-    email = models.EmailField(null=True, blank=True)  # Email for tracking user, nullable for anonymous users
+    survey = models.ForeignKey(Survey, related_name="responses", on_delete=models.CASCADE, db_index=True)
+    email = models.EmailField(
+        null=True, blank=True, db_index=True
+    )  # Email for tracking user, nullable for anonymous users
     completed = models.BooleanField(default=False)
 
     def __str__(self):
