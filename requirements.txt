@@ -1,0 +1,9 @@
+# requirements.txt
+Django==4.2
+djangorestframework==3.14.0
+psycopg2-binary==2.9.6
+celery==5.3.1
+redis==5.0.0
+djangorestframework-simplejwt==5.2.2
+drf-yasg==1.21.4
+python-dotenv==1.0.1
