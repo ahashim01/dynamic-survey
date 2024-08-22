@@ -49,6 +49,27 @@ class SurveySerializer(serializers.ModelSerializer):
 
         return survey
 
+    def update(self, instance: Survey, validated_data):
+        sections_data = validated_data.pop("sections", None)
+
+        instance.title = validated_data.get("title", instance.title)
+        instance.description = validated_data.get("description", instance.description)
+        instance.save()
+
+        if sections_data is not None:
+            # Clear existing sections
+            instance.sections.all().delete()
+
+            # Create new sections and fields
+            for section_data in sections_data:
+                fields_data = section_data.pop("fields")
+                section = Section.objects.create(survey=instance, **section_data)
+
+                for field_data in fields_data:
+                    Field.objects.create(section=section, **field_data)
+
+        return instance
+
 
 class ResponseSerializer(serializers.ModelSerializer):
     class Meta:

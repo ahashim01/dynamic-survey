@@ -1,0 +1,36 @@
+[run]
+# Source files to include in coverage
+source = .
+
+# Files and directories to omit from coverage
+omit =
+    manage.py
+    survey_platform/asgi.py
+    survey_platform/wsgi.py
+    survey_platform/settings.py
+    */migrations/*
+    */__init__.py
+    */urls.py
+    */apps.py
+    */test*
+
+[report]
+# Include missing line numbers in the report
+show_missing = True
+
+# Exclude certain lines from coverage
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug-only code:
+    def __repr__
+    if self\.debug
+
+    # Ignore type hints and annotations
+    @abstractmethod
+    def test
+    if TYPE_CHECKING
+
+    # Don't require coverage for main block
+    if __name__ == "__main__":

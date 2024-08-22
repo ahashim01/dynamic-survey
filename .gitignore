@@ -18,3 +18,7 @@ media/
 # Docker
 docker-compose.yml
 .env
+
+# Coverage reports
+htmlcov/
+.coverage
