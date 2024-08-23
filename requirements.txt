@@ -1,7 +1,7 @@
 # requirements.txt
 celery==5.3.1
 coverage==7.6.1
-Django==4.2
+Django==4.2.15
 djangorestframework==3.14.0
 djangorestframework-simplejwt==5.2.2
 django-debug-toolbar==4.4.6
