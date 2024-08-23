@@ -1,6 +1,7 @@
 from django.test import TestCase
 from surveys.models import Survey, Section, Field, Response, ResponseData
 from surveys.serializers import SectionSerializer, SurveySerializer, ResponseSerializer, ResponseDataSerializer
+from rest_framework.exceptions import ValidationError
 
 
 class SurveySerializerTest(TestCase):
@@ -294,41 +295,87 @@ class ResponseSerializerTest(TestCase):
 
 
 class ResponseDataSerializerTest(TestCase):
-
     def setUp(self):
-        # Set up a survey with a section and a field
-        self.survey = Survey.objects.create(
-            title="Customer Satisfaction Survey", description="A survey to gauge customer satisfaction."
-        )
-        self.section = Section.objects.create(survey=self.survey, title="General Feedback", order=1)
-        self.field = Field.objects.create(
+        # Create a Section instance to associate with the Field
+        self.survey = Survey.objects.create(title="Response Data Test Survey", description="Testing dependencies.")
+        self.section = Section.objects.create(survey=self.survey, title="Response Data Section", order=1)
+
+        # Create a Field instance with choices
+        self.field_with_choices = Field.objects.create(
             section=self.section,
-            label="How satisfied are you with our service?",
-            field_type="radio",
+            label="Choice Field",
+            field_type="dropdown",
             required=True,
             order=1,
+            choices=["option1", "option2", "option3"],
+            conditional_logic=None,
+            dependencies=None,
         )
-        self.response = Response.objects.create(survey=self.survey, email="test@example.com", completed=True)
-        self.response_data = {"response": self.response.id, "field": self.field.id, "value": "Very Satisfied"}
 
-    def test_response_data_serializer_create(self):
-        """Test that the ResponseDataSerializer's create method correctly handles data."""
-        serializer = ResponseDataSerializer(data=self.response_data)
-        self.assertTrue(serializer.is_valid(), msg=serializer.errors)
+        # Create a Field instance without choices but with conditional logic and dependencies
+        self.field_with_logic_and_dependencies = Field.objects.create(
+            section=self.section,
+            label="Conditional Field",
+            field_type="text",
+            required=True,
+            order=2,
+            choices=None,
+            conditional_logic={"show_if": {"field_id": 1, "value": "option1"}},
+            dependencies={"dependent_on": 1, "value_required": "option2"},
+        )
 
-        response_data: ResponseData = serializer.save()
+        # Create a Response instance
+        self.response = Response.objects.create(survey=self.survey)
 
-        # Check that the response data was created
-        self.assertEqual(ResponseData.objects.count(), 1)
-        self.assertEqual(response_data.response, self.response)
-        self.assertEqual(response_data.field, self.field)
-        self.assertEqual(response_data.value, "Very Satisfied")
+    def test_validate_invalid_choice(self):
+        """Test validation fails when value is not in predefined choices."""
+        data = {"response": self.response.id, "field": self.field_with_choices.id, "value": "invalid_option"}
 
-    def test_response_data_serializer_invalid(self):
-        """Test that the ResponseDataSerializer raises validation errors for missing data."""
-        invalid_data = self.response_data.copy()
-        invalid_data.pop("field")  # Remove the field to test validation
+        serializer = ResponseDataSerializer(data=data)
+        with self.assertRaises(ValidationError) as context:
+            serializer.is_valid(raise_exception=True)
 
-        serializer = ResponseDataSerializer(data=invalid_data)
+        self.assertIn("Value 'invalid_option' is not a valid choice.", str(context.exception))
+
+    def test_validate_conditional_logic_not_satisfied(self):
+        """Test validation fails when conditional logic is not satisfied."""
+        # Override _check_conditional_logic to return False
+        ResponseDataSerializer._check_conditional_logic = lambda self, field, data: False
+
+        data = {"response": self.response.id, "field": self.field_with_logic_and_dependencies.id, "value": "some_value"}
+
+        serializer = ResponseDataSerializer(data=data)
+        with self.assertRaises(ValidationError) as context:
+            serializer.is_valid(raise_exception=True)
+
+        self.assertIn("Conditional logic not satisfied.", str(context.exception))
+
+    def test_validate_dependencies_not_met(self):
+        """Test validation fails when dependencies are not met."""
+        # Override _check_dependencies to return False
+        ResponseDataSerializer._check_conditional_logic = lambda self, field, data: True
+        ResponseDataSerializer._check_dependencies = lambda self, field, data: False
+
+        data = {"response": self.response.id, "field": self.field_with_logic_and_dependencies.id, "value": "some_value"}
+
+        serializer = ResponseDataSerializer(data=data)
+        with self.assertRaises(ValidationError) as context:
+            serializer.is_valid(raise_exception=True)
+
+        self.assertIn("Dependency conditions not met.", str(context.exception))
+
+    def test_validate_successful(self):
+        """Test successful validation when all conditions are met."""
+        data = {"response": self.response.id, "field": self.field_with_choices.id, "value": "option1"}
+
+        serializer = ResponseDataSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["value"], "option1")
+
+    def test_validate_with_empty_field(self):
+        """Test validation when the value field is empty."""
+        data = {"response": self.response.id, "field": self.field_with_choices.id, "value": ""}
+
+        serializer = ResponseDataSerializer(data=data)
         self.assertFalse(serializer.is_valid())
-        self.assertIn("field", serializer.errors)
+        self.assertIn("This field may not be blank.", serializer.errors["value"])

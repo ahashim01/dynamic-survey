@@ -13,6 +13,7 @@ class FieldSerializer(serializers.ModelSerializer):
             "order",
             "conditional_logic",
             "dependencies",
+            "choices",
             "created_at",
             "updated_at",
         ]
@@ -177,13 +178,3 @@ class ResponseDataSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Dependency conditions not met.")
 
         return data
-
-    def _check_conditional_logic(self, field, data):
-        # Logic to evaluate conditional logic JSON and compare it with previous responses
-        # Placeholder implementation
-        return True
-
-    def _check_dependencies(self, field, data):
-        # Logic to evaluate dependencies JSON and compare it with previous responses
-        # Placeholder implementation
-        return True
