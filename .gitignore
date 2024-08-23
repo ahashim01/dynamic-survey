@@ -22,3 +22,4 @@ docker-compose.yml
 # Coverage reports
 htmlcov/
 .coverage
+pytest.ini

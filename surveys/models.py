@@ -45,6 +45,7 @@ class Field(TimestampedModel):
     order = models.IntegerField()
     conditional_logic = models.JSONField(blank=True, null=True)  # Store complex logic for field visibility
     dependencies = models.JSONField(blank=True, null=True)  # Handle dependencies between fields across sections
+    choices = models.JSONField(blank=True, null=True)  # Predefined choices for dropdown, checkbox, etc.
 
     class Meta:
         ordering = ["order"]

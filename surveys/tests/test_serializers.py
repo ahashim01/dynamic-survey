@@ -1,6 +1,6 @@
 from django.test import TestCase
 from surveys.models import Survey, Section, Field, Response, ResponseData
-from surveys.serializers import SurveySerializer, ResponseSerializer, ResponseDataSerializer
+from surveys.serializers import SectionSerializer, SurveySerializer, ResponseSerializer, ResponseDataSerializer
 
 
 class SurveySerializerTest(TestCase):
@@ -153,6 +153,115 @@ class SurveySerializerTest(TestCase):
         self.assertEqual(field.field_type, "text")
         self.assertFalse(field.required)
         self.assertEqual(field.order, 1)
+
+
+class SectionSerializerConditionalLogicTest(TestCase):
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.survey = Survey.objects.create(
+            title="Customer Satisfaction Survey", description="A survey to gauge customer satisfaction."
+        )
+        cls.section = Section.objects.create(survey=cls.survey, title="General Feedback", order=1)
+        cls.field1 = Field.objects.create(
+            section=cls.section, label="Are you satisfied?", field_type="radio", required=True, order=1
+        )
+        cls.field2 = Field.objects.create(
+            section=cls.section,
+            label="Why are you satisfied?",
+            field_type="text",
+            required=False,
+            order=2,
+            conditional_logic={"depends_on_field": cls.field1.id, "operator": "==", "value": "yes"},
+        )
+        cls.response = Response.objects.create(survey=cls.survey, email="test@example.com", completed=False)
+        ResponseData.objects.create(response=cls.response, field=cls.field1, value="yes")
+
+    def test_conditional_logic_in_survey_serializer(self):
+        """Test that the SurveySerializer respects conditional logic when serializing."""
+        context = {"user_responses": {self.field1.id: "yes"}}
+        serializer = SurveySerializer(self.survey, context=context)
+
+        # Assertions
+        data = serializer.data
+        self.assertEqual(len(data["sections"][0]["fields"]), 2)  # Both fields should be included
+
+        # Test with a different response that should hide Field 2
+        context = {"user_responses": {self.field1.id: "no"}}
+        serializer = SurveySerializer(self.survey, context=context)
+        data = serializer.data
+        self.assertEqual(len(data["sections"][0]["fields"]), 1)  # Only Field 1 should be included
+
+    def test_unsupported_operator_raises_valueerror(self):
+        """Test that unsupported operators raise a ValueError."""
+        Field.objects.create(
+            section=self.section,
+            label="Field 3",
+            field_type="text",
+            order=3,
+            conditional_logic={"depends_on_field": self.field2.id, "operator": "unsupported", "value": "yes"},
+        )
+
+        context = {"user_responses": {self.field2.id: "yes"}}
+        with self.assertRaises(ValueError):
+            serializer = SurveySerializer(self.survey, context=context)
+            _ = serializer.data  # Trigger the evaluation by accessing the data
+
+
+class SectionSerializerDependencyTest(TestCase):
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.survey = Survey.objects.create(title="Dependency Test Survey", description="Testing dependencies.")
+        cls.section = Section.objects.create(survey=cls.survey, title="Dependency Section", order=1)
+        cls.field1 = Field.objects.create(section=cls.section, label="Field 1", field_type="text", order=1)
+        cls.field2 = Field.objects.create(
+            section=cls.section,
+            label="Dependent Field",
+            field_type="text",
+            order=2,
+            dependencies={"depends_on_field": cls.field1.id, "operator": "in", "values": ["yes", "maybe"]},
+        )
+
+    def test_evaluate_dependencies_in(self):
+        """Test that _evaluate_dependencies includes field when dependency is met."""
+        context = {"user_responses": {self.field1.id: "yes"}}
+        serializer = SectionSerializer(instance=self.section, context=context)
+
+        # Since the dependency is met, field2 should be included
+        fields = serializer.data["fields"]
+        self.assertEqual(len(fields), 2)  # Both fields should be present
+
+    def test_evaluate_dependencies_not_met(self):
+        """Test that _evaluate_dependencies excludes field when dependency is not met."""
+        context = {"user_responses": {self.field1.id: "no"}}
+        serializer = SectionSerializer(instance=self.section, context=context)
+
+        # Since the dependency is not met, field2 should be excluded
+        fields = serializer.data["fields"]
+        self.assertEqual(len(fields), 1)  # Only field1 should be present
+
+    def test_evaluate_dependencies_not_in(self):
+        """Test that _evaluate_dependencies includes field when dependency with 'not_in' is met."""
+        self.field2.dependencies = {"depends_on_field": self.field1.id, "operator": "not_in", "values": ["no"]}
+        self.field2.save()
+
+        context = {"user_responses": {self.field1.id: "yes"}}
+        serializer = SectionSerializer(instance=self.section, context=context)
+
+        # Since the 'not_in' dependency is met, field2 should be included
+        fields = serializer.data["fields"]
+        self.assertEqual(len(fields), 2)  # Both fields should be present
+
+    def test_evaluate_dependencies_unsupported_operator_raises_valueerror(self):
+        """Test that _evaluate_dependencies raises a ValueError for unsupported operators."""
+        self.field2.dependencies = {"depends_on_field": self.field1.id, "operator": "unsupported", "values": ["no"]}
+        self.field2.save()
+
+        context = {"user_responses": {self.field1.id: "yes"}}
+        with self.assertRaises(ValueError):
+            serializer = SectionSerializer(instance=self.section, context=context)
+            _ = serializer.data
 
 
 class ResponseSerializerTest(TestCase):
